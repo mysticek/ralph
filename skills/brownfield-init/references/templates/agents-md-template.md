@@ -38,11 +38,13 @@ Ralph is an autonomous AI agent loop that runs coding agents repeatedly until al
 1. Read `prd.json` and `progress.txt` (check Codebase Patterns section first)
 2. Check you're on the correct branch from PRD `branchName`
 3. Pick the **highest priority** story where `passes: false`
-4. Implement that single story
-5. Run quality checks: `{quality_check_commands}`
-6. If checks pass, commit: `feat: [Story ID] - [Story Title]`
-7. Update `prd.json` to set `passes: true`
-8. Append progress to `progress.txt`
+4. **Research** — Read acceptance criteria, find related files (grep keywords, trace imports), check progress.txt for relevant learnings
+5. **Plan** — Decide which files to change, what approach, edge cases. If too complex for one iteration, note why and skip to next story
+6. **Implement** — Execute the plan. Stay focused on planned changes, don't drift
+7. Run quality checks: `{quality_check_commands}`
+8. If checks pass, commit: `feat: [Story ID] - [Story Title]`
+9. Update `prd.json` to set `passes: true`
+10. Append progress to `progress.txt`
 
 ## Project-Specific Patterns
 

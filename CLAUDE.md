@@ -8,12 +8,34 @@ You are an autonomous coding agent working on a software project.
 2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
 3. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
 4. Pick the **highest priority** user story where `passes: false`
-5. Implement that single user story
-6. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
-7. Update CLAUDE.md files if you discover reusable patterns (see below)
-8. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-9. Update the PRD to set `passes: true` for the completed story
-10. Append your progress to `progress.txt`
+5. **Research** — Understand the story and affected code (see RPI section below)
+6. **Plan** — Design your approach before writing code (see RPI section below)
+7. **Implement** — Execute the plan, staying focused on planned changes
+8. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
+9. Update CLAUDE.md files if you discover reusable patterns (see below)
+10. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
+11. Update the PRD to set `passes: true` for the completed story
+12. Append your progress to `progress.txt`
+
+## RPI: Research → Plan → Implement
+
+Each story goes through three phases before committing:
+
+### Research
+- Read the story's acceptance criteria carefully — understand what "done" looks like
+- Find all related files: grep for keywords, trace imports, check component usage
+- Review the Codebase Patterns section in progress.txt for relevant learnings
+- Document what exists and what needs to change
+
+### Plan
+- Decide which files to modify, what approach to take, and what edge cases exist
+- If the story is too complex for a single iteration, note why in progress.txt and skip to the next story
+- Keep the plan brief — a mental model or short list, not a design doc
+
+### Implement
+- Execute the plan — make the planned changes
+- Stay focused: don't drift into unrelated improvements or refactors
+- If you discover something unexpected, adjust the plan but don't expand scope
 
 ## Progress Report Format
 
