@@ -4,16 +4,16 @@
     "name": "snarktank"
   },
   "metadata": {
-    "description": "Skills for the Ralph autonomous agent system - Generate PRDs and convert them to prd.json format for autonomous execution",
+    "description": "Skills for the Ralph autonomous agent system - Initialize Ralph for existing codebases, generate PRDs, and convert them to prd.json for autonomous execution",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "ralph-skills",
       "source": "./",
-      "description": "PRD generation and conversion skills for the Ralph autonomous agent loop",
+      "description": "Brownfield initialization, PRD generation, and conversion skills for the Ralph autonomous agent loop",
       "version": "1.0.0",
-      "keywords": ["ralph", "prd", "automation", "agent", "planning"],
+      "keywords": ["ralph", "prd", "automation", "agent", "planning", "brownfield", "init"],
       "category": "productivity",
       "skills": "./skills/"
     }

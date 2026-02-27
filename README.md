@@ -66,10 +66,12 @@ Then install the skills:
 ```
 
 Available skills after installation:
+- `/brownfield-init` - Initialize Ralph for an existing codebase (auto-detect + interview + generate config)
 - `/prd` - Generate Product Requirements Documents
 - `/ralph` - Convert PRDs to prd.json format
 
 Skills are automatically invoked when you ask Claude to:
+- "initialize ralph", "setup ralph for existing project", "brownfield init"
 - "create a prd", "write prd for", "plan this feature"
 - "convert this prd", "turn into ralph format", "create prd.json"
 
@@ -86,6 +88,25 @@ Add to `~/.config/amp/settings.json`:
 This enables automatic handoff when context fills up, allowing Ralph to handle large stories that exceed a single context window.
 
 ## Workflow
+
+### For Existing Codebases (Brownfield)
+
+If you already have a codebase and want to set up Ralph on it, use the brownfield-init skill:
+
+```
+/brownfield-init
+```
+
+This will:
+1. Auto-detect your tech stack, conventions, and tooling
+2. Ask ~20 targeted questions about your project and workflow
+3. Generate `CLAUDE.md`, `AGENTS.md`, `progress.txt`, and `tasks/` directory
+
+After initialization, continue with step 2 below (create a PRD).
+
+### For New Projects (Greenfield)
+
+For new projects, manually create `CLAUDE.md` with your project conventions, then follow the steps below.
 
 ### 1. Create a PRD
 
@@ -139,6 +160,7 @@ Ralph will:
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
 | `progress.txt` | Append-only learnings for future iterations |
+| `skills/brownfield-init/` | Skill for initializing Ralph on existing codebases |
 | `skills/prd/` | Skill for generating PRDs (works with Amp and Claude Code) |
 | `skills/ralph/` | Skill for converting PRDs to JSON (works with Amp and Claude Code) |
 | `.claude-plugin/` | Plugin manifest for Claude Code marketplace discovery |
