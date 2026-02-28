@@ -43,20 +43,20 @@ LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
   CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
   LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
-  
+
   if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
     # Archive the previous run
     DATE=$(date +%Y-%m-%d)
     # Strip "ralph/" prefix from branch name for folder
     FOLDER_NAME=$(echo "$LAST_BRANCH" | sed 's|^ralph/||')
     ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
-    
+
     echo "Archiving previous run: $LAST_BRANCH"
     mkdir -p "$ARCHIVE_FOLDER"
     [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
     [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
     echo "   Archived to: $ARCHIVE_FOLDER"
-    
+
     # Reset progress file for new run
     echo "# Ralph Progress Log" > "$PROGRESS_FILE"
     echo "Started: $(date)" >> "$PROGRESS_FILE"
@@ -79,12 +79,24 @@ if [ ! -f "$PROGRESS_FILE" ]; then
   echo "---" >> "$PROGRESS_FILE"
 fi
 
+# Count passing stories
+count_passing() {
+  jq '[.userStories[] | select(.passes == true)] | length' "$PRD_FILE" 2>/dev/null || echo 0
+}
+
+TOTAL_STORIES=$(jq '.userStories | length' "$PRD_FILE" 2>/dev/null || echo 0)
+
 echo "Starting Ralph - Tool: $TOOL - Max iterations: $MAX_ITERATIONS"
+echo "Stories: $TOTAL_STORIES total, $(count_passing) already passing"
+echo ""
 
 for i in $(seq 1 $MAX_ITERATIONS); do
+  PASSING_BEFORE=$(count_passing)
+
   echo ""
   echo "==============================================================="
   echo "  Ralph Iteration $i of $MAX_ITERATIONS ($TOOL)"
+  echo "  Stories passing: $PASSING_BEFORE / $TOTAL_STORIES"
   echo "==============================================================="
 
   # Run the selected tool with the ralph prompt
@@ -94,20 +106,63 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     # Claude Code: use --dangerously-skip-permissions for autonomous operation, --print for output
     OUTPUT=$(claude --dangerously-skip-permissions --print < "$SCRIPT_DIR/CLAUDE.md" 2>&1 | tee /dev/stderr) || true
   fi
-  
+
+  PASSING_AFTER=$(count_passing)
+  STORIES_COMPLETED=$((PASSING_AFTER - PASSING_BEFORE))
+
+  # Guard: detect if agent completed more than 1 story
+  if [ "$STORIES_COMPLETED" -gt 1 ]; then
+    echo ""
+    echo "!! WARNING: Agent completed $STORIES_COMPLETED stories in one iteration (expected 1)."
+    echo "!! This violates the one-story-per-iteration rule."
+    echo "!! Reverting prd.json to only accept 1 story advancement..."
+
+    # Find which stories were flipped and revert all but the first one
+    NEWLY_PASSING=$(jq -r --argjson before "$PASSING_BEFORE" '
+      [.userStories[] | select(.passes == true)] |
+      .[$before:] |
+      .[1:] |
+      .[].id
+    ' "$PRD_FILE" 2>/dev/null)
+
+    for STORY_ID in $NEWLY_PASSING; do
+      echo "   Reverting $STORY_ID to passes: false"
+      jq --arg id "$STORY_ID" '
+        .userStories |= map(if .id == $id then .passes = false else . end)
+      ' "$PRD_FILE" > "$PRD_FILE.tmp" && mv "$PRD_FILE.tmp" "$PRD_FILE"
+    done
+
+    echo "!! Only the first completed story was kept. Continuing with next iteration."
+  fi
+
   # Check for completion signal
   if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
-    echo ""
-    echo "Ralph completed all tasks!"
-    echo "Completed at iteration $i of $MAX_ITERATIONS"
-    exit 0
+    # Double-check that all stories are actually passing
+    FINAL_PASSING=$(count_passing)
+    if [ "$FINAL_PASSING" -eq "$TOTAL_STORIES" ]; then
+      echo ""
+      echo "Ralph completed all tasks!"
+      echo "Completed at iteration $i of $MAX_ITERATIONS"
+      echo ""
+      echo "Next steps:"
+      echo "  1. Review changes on the feature branch"
+      echo "  2. Squash WIP commits into one: git rebase -i main"
+      echo "  3. Rename commit to: f/<ticket> - <description>"
+      echo "  4. Push and open PR"
+      exit 0
+    else
+      echo ""
+      echo "Agent claimed COMPLETE but only $FINAL_PASSING/$TOTAL_STORIES stories pass."
+      echo "Continuing iterations..."
+    fi
   fi
-  
-  echo "Iteration $i complete. Continuing..."
+
+  echo "Iteration $i complete. Stories passing: $(count_passing) / $TOTAL_STORIES"
   sleep 2
 done
 
 echo ""
 echo "Ralph reached max iterations ($MAX_ITERATIONS) without completing all tasks."
+echo "Stories passing: $(count_passing) / $TOTAL_STORIES"
 echo "Check $PROGRESS_FILE for status."
 exit 1

@@ -2,6 +2,8 @@
 
 You are an autonomous coding agent working on a software project.
 
+**CRITICAL RULE: You must implement EXACTLY ONE user story per invocation. After completing one story, STOP. Do not continue to the next story. Do not implement multiple stories. One story, one commit, then stop.**
+
 ## Your Task
 
 1. Read the PRD at `prd.json` (in the same directory as this file)
@@ -14,8 +16,9 @@ You are an autonomous coding agent working on a software project.
 8. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
 9. Update AGENTS.md files if you discover reusable patterns (see below)
 10. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-11. Update the PRD to set `passes: true` for the completed story
+11. Update the PRD to set `passes: true` for the completed story ONLY
 12. Append your progress to `progress.txt`
+13. **STOP HERE. Do not pick up another story. End your response.**
 
 ## RPI: Research → Plan → Implement
 
@@ -115,16 +118,19 @@ A frontend story is NOT complete until browser verification passes.
 
 ## Stop Condition
 
-After completing a user story, check if ALL stories have `passes: true`.
+After completing ONE user story:
 
-If ALL stories are complete and passing, reply with:
-<promise>COMPLETE</promise>
+1. Check if ALL stories now have `passes: true`
+2. If ALL complete → reply with `<promise>COMPLETE</promise>`
+3. If stories remain with `passes: false` → reply with `<promise>NEXT</promise>`
 
-If there are still stories with `passes: false`, end your response normally (another iteration will pick up the next story).
+**In BOTH cases, STOP immediately after the promise tag. Do not start working on the next story. The loop script will invoke you again for the next story.**
 
-## Important
+## Important — READ THIS CAREFULLY
 
-- Work on ONE story per iteration
-- Commit frequently
-- Keep CI green
+- **ONE story per invocation. This is non-negotiable.**
+- Do NOT commit broken code
+- Keep changes focused and minimal
+- Follow existing code patterns
 - Read the Codebase Patterns section in progress.txt before starting
+- If a story requires no code changes (e.g. audit finds everything is OK), you MUST still explain WHY in the progress report. Do not just mark it as passing without justification.
