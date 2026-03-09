@@ -16,7 +16,7 @@ You are an autonomous coding agent working on a software project.
 8. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
 9. Update CLAUDE.md files if you discover reusable patterns (see below)
 10. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-11. Update the PRD to set `passes: true` for the completed story ONLY
+11. Update the PRD to set `passes: true` for the completed story ONLY. **CRITICAL: Use the Edit tool to change ONLY the single `"passes": false` to `"passes": true` for the completed story. NEVER use the Write tool on prd.json. NEVER rewrite or regenerate the file. A single Edit replacing `"passes": false` → `"passes": true` with enough surrounding context (story ID) to be unique.**
 12. Append your progress to `progress.txt`
 13. **STOP HERE. Do not pick up another story. End your response.**
 
