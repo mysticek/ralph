@@ -1,6 +1,6 @@
 ---
 name: ralph-init
-description: "Initialize Ralph for a new (greenfield) project. Sets up ralph.sh, CLAUDE.md, AGENTS.md, progress.txt, and tasks/ directory through a short interactive interview. Copies all scripts and makes them executable. Use when starting a new project with Ralph from scratch. Triggers on: ralph init, initialize ralph, setup ralph, greenfield init, start ralph."
+description: "Initialize Ralph for a new (greenfield) project. Sets up ralph.sh, CLAUDE.md, AGENTS.md, progress.txt, and tasks/ directory through a short interactive interview. Copies all scripts and makes them executable. Optionally accepts a feature description to also generate PRD + prd.json in one step. Use when starting a new project with Ralph from scratch. Triggers on: ralph init, initialize ralph, setup ralph, greenfield init, start ralph."
 user-invocable: true
 ---
 
@@ -8,17 +8,20 @@ user-invocable: true
 
 Set up Ralph for a new or nearly-empty project. Copies all required scripts, generates configuration files, and prepares the project for autonomous iteration.
 
+**If the user provides a feature description** (e.g., `/ralph-init Create a todo app with add/delete/toggle`), also generate the PRD and prd.json at the end — making the project ready to run Ralph immediately.
+
 ---
 
 ## The Job
 
-Three phases, executed in order:
+Three phases (+ optional fourth), executed in order:
 
 1. **Quick Scan** — Check what exists already (git repo? package.json? existing Ralph files?)
 2. **Interview** — Ask 3 batches of targeted questions using `AskUserQuestion`
 3. **Generate** — Copy scripts, create configuration files, set everything up
+4. **PRD Generation (if description provided)** — Generate PRD markdown + prd.json from the user's feature description
 
-**Important:** This skill sets up infrastructure. It does NOT create PRDs or implement features.
+**Important:** Phase 4 only runs if the user provided a feature description as an argument.
 
 ---
 
@@ -307,6 +310,75 @@ Print a summary:
 3. Convert to prd.json: `/ralph`
 4. Run Ralph: `./{scripts_dir}/ralph.sh --tool {tool} 10`
 ```
+
+---
+
+## Phase 4: PRD Generation (Optional)
+
+**This phase only runs if the user provided a feature description as an argument to `/ralph-init`.**
+
+If the user invoked the skill with a description (e.g., `/ralph-init Create a todo app with React, add/delete/toggle todos`), generate both the PRD markdown and prd.json automatically.
+
+### Step 1: Generate PRD Markdown
+
+Using the user's description and the interview answers (tech stack, quality commands, etc.), generate a PRD following the same format as the `/prd` skill:
+
+- Save to `tasks/prd-[feature-name].md`
+- Include: Introduction, Goals, User Stories, Functional Requirements, Non-Goals
+- User stories must be small enough for one Ralph iteration
+- Acceptance criteria must be verifiable
+- Always include "Typecheck passes" in every story
+- For UI stories, include "Verify in browser using dev-browser skill"
+
+**Use the tech stack context from the interview** to make stories more specific (e.g., if they chose React + Vite, reference actual file paths like `src/App.tsx`).
+
+### Step 2: Generate prd.json
+
+Convert the PRD to `prd.json` in the project root, following the `/ralph` skill format:
+
+```json
+{
+  "project": "[Project Name from Q1/scan]",
+  "branchName": "ralph/[feature-name-kebab-case]",
+  "description": "[User's feature description]",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "[Story title]",
+      "description": "As a [user], I want [feature] so that [benefit]",
+      "acceptanceCriteria": ["..."],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
+```
+
+**Story ordering rules:**
+1. Schema/database changes first
+2. Backend logic second
+3. UI components third
+4. Polish/styling last
+
+**Story sizing rule:** If you cannot describe the change in 2-3 sentences, split it into multiple stories.
+
+### Step 3: Update Summary
+
+Replace the "Next steps" in the output summary:
+
+```
+**Next steps:**
+1. Review generated PRD at tasks/prd-[feature-name].md
+2. Review prd.json — adjust stories if needed
+3. Run Ralph: ./{scripts_dir}/ralph.sh --tool {tool} 10
+```
+
+Instead of the default next steps that tell the user to run `/prd` and `/ralph` manually.
+
+### No Description Provided
+
+If the user runs `/ralph-init` without a description, skip Phase 4 entirely. The output summary should show the default next steps pointing to `/prd` and `/ralph`.
 
 ---
 
