@@ -323,59 +323,48 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   if [[ "$TOOL" == "amp" ]]; then
     OUTPUT=$(cat "$SCRIPT_DIR/prompt.md" | amp --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
   else
-    # Claude Code: stream JSON and show live progress bullets
-    TEXT_OUTPUT_FILE=$(mktemp)
-    PROGRESS_PIPE=$(mktemp -u)
-    mkfifo "$PROGRESS_PIPE"
+    # Claude Code: run with live file-change monitoring
+    WATCH_FILE=$(mktemp)
+    echo "0" > "$WATCH_FILE"
 
-    # Background: parse stream-json and print progress bullets
+    # Background: monitor git changes every 5 seconds
     (
-      CURRENT_TOOL=""
-      CURRENT_INPUT=""
-      while IFS= read -r line; do
-        EVENT_TYPE=$(echo "$line" | jq -r '.event.type // empty' 2>/dev/null)
-        case "$EVENT_TYPE" in
-          content_block_start)
-            if [[ "$(echo "$line" | jq -r '.event.content_block.type // empty' 2>/dev/null)" == "tool_use" ]]; then
-              CURRENT_TOOL=$(echo "$line" | jq -r '.event.content_block.name // empty' 2>/dev/null)
-              CURRENT_INPUT=""
+      LAST_SNAPSHOT=""
+      while [ -f "$WATCH_FILE" ]; do
+        # Get current changed files
+        SNAPSHOT=$(git diff --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)
+        if [[ -n "$SNAPSHOT" && "$SNAPSHOT" != "$LAST_SNAPSHOT" ]]; then
+          # Find new files since last check
+          NEW_FILES=""
+          while IFS= read -r f; do
+            if ! echo "$LAST_SNAPSHOT" | grep -qxF "$f" 2>/dev/null; then
+              NEW_FILES="${NEW_FILES}${f}\n"
             fi
-            ;;
-          content_block_delta)
-            DELTA_TYPE=$(echo "$line" | jq -r '.event.delta.type // empty' 2>/dev/null)
-            if [[ "$DELTA_TYPE" == "input_json_delta" && -n "$CURRENT_TOOL" ]]; then
-              CURRENT_INPUT="${CURRENT_INPUT}$(echo "$line" | jq -r '.event.delta.partial_json // empty' 2>/dev/null)"
-            elif [[ "$DELTA_TYPE" == "text_delta" ]]; then
-              echo -n "$(echo "$line" | jq -r '.event.delta.text // empty' 2>/dev/null)" >> "$TEXT_OUTPUT_FILE"
-            fi
-            ;;
-          content_block_stop)
-            if [[ -n "$CURRENT_TOOL" ]]; then
-              case "$CURRENT_TOOL" in
-                Read)   echo "  ◦ Read $(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')" ;;
-                Edit)   echo "  ◆ Edit $(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')" ;;
-                Write)  echo "  ◆ Write $(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')" ;;
-                Bash)   echo "  ▸ Run: $(echo "$CURRENT_INPUT" | jq -r '.command // empty' 2>/dev/null | head -c 60)" ;;
-                Grep)   echo "  ◦ Grep \"$(echo "$CURRENT_INPUT" | jq -r '.pattern // empty' 2>/dev/null | head -c 40)\"" ;;
-                Glob)   echo "  ◦ Glob $(echo "$CURRENT_INPUT" | jq -r '.pattern // empty' 2>/dev/null)" ;;
-                Agent)  echo "  ⧫ Agent: $(echo "$CURRENT_INPUT" | jq -r '.description // empty' 2>/dev/null)" ;;
-                *)      echo "  ◦ $CURRENT_TOOL" ;;
-              esac
-              CURRENT_TOOL=""
-              CURRENT_INPUT=""
-            fi
-            ;;
-        esac
-      done < "$PROGRESS_PIPE"
+          done <<< "$SNAPSHOT"
+          if [[ -n "$NEW_FILES" ]]; then
+            echo -e "$NEW_FILES" | while IFS= read -r f; do
+              [[ -z "$f" ]] && continue
+              BASENAME=$(basename "$f")
+              # Detect type of change
+              if git ls-files --others --exclude-standard 2>/dev/null | grep -qxF "$f"; then
+                echo "  ◆ New: $BASENAME"
+              else
+                echo "  ◦ Modified: $BASENAME"
+              fi
+            done
+          fi
+          LAST_SNAPSHOT="$SNAPSHOT"
+        fi
+        sleep 5
+      done
     ) &
-    PARSER_PID=$!
+    MONITOR_PID=$!
 
-    # Run claude, tee output to both the parser pipe and capture text
-    claude --dangerously-skip-permissions --print --output-format stream-json < "$SCRIPT_DIR/CLAUDE.md" 2>&1 | tee "$PROGRESS_PIPE" > /dev/null || true
+    OUTPUT=$(claude --dangerously-skip-permissions --print < "$SCRIPT_DIR/CLAUDE.md" 2>&1 | tee /dev/stderr) || true
 
-    wait $PARSER_PID 2>/dev/null || true
-    OUTPUT=$(cat "$TEXT_OUTPUT_FILE" 2>/dev/null)
-    rm -f "$TEXT_OUTPUT_FILE" "$PROGRESS_PIPE"
+    # Stop the monitor
+    rm -f "$WATCH_FILE"
+    wait $MONITOR_PID 2>/dev/null || true
   fi
 
   END_TIME=$(date +%s)
