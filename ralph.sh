@@ -323,81 +323,59 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   if [[ "$TOOL" == "amp" ]]; then
     OUTPUT=$(cat "$SCRIPT_DIR/prompt.md" | amp --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
   else
-    # Claude Code: stream JSON events and show live progress
-    STREAM_OUTPUT_FILE=$(mktemp)
+    # Claude Code: stream JSON and show live progress bullets
     TEXT_OUTPUT_FILE=$(mktemp)
+    PROGRESS_PIPE=$(mktemp -u)
+    mkfifo "$PROGRESS_PIPE"
 
-    claude --dangerously-skip-permissions --print --output-format stream-json < "$SCRIPT_DIR/CLAUDE.md" 2>/dev/null | while IFS= read -r line; do
-      # Save raw line for full output capture
-      echo "$line" >> "$STREAM_OUTPUT_FILE"
+    # Background: parse stream-json and print progress bullets
+    (
+      CURRENT_TOOL=""
+      CURRENT_INPUT=""
+      while IFS= read -r line; do
+        EVENT_TYPE=$(echo "$line" | jq -r '.event.type // empty' 2>/dev/null)
+        case "$EVENT_TYPE" in
+          content_block_start)
+            if [[ "$(echo "$line" | jq -r '.event.content_block.type // empty' 2>/dev/null)" == "tool_use" ]]; then
+              CURRENT_TOOL=$(echo "$line" | jq -r '.event.content_block.name // empty' 2>/dev/null)
+              CURRENT_INPUT=""
+            fi
+            ;;
+          content_block_delta)
+            DELTA_TYPE=$(echo "$line" | jq -r '.event.delta.type // empty' 2>/dev/null)
+            if [[ "$DELTA_TYPE" == "input_json_delta" && -n "$CURRENT_TOOL" ]]; then
+              CURRENT_INPUT="${CURRENT_INPUT}$(echo "$line" | jq -r '.event.delta.partial_json // empty' 2>/dev/null)"
+            elif [[ "$DELTA_TYPE" == "text_delta" ]]; then
+              echo -n "$(echo "$line" | jq -r '.event.delta.text // empty' 2>/dev/null)" >> "$TEXT_OUTPUT_FILE"
+            fi
+            ;;
+          content_block_stop)
+            if [[ -n "$CURRENT_TOOL" ]]; then
+              case "$CURRENT_TOOL" in
+                Read)   echo "  ◦ Read $(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')" ;;
+                Edit)   echo "  ◆ Edit $(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')" ;;
+                Write)  echo "  ◆ Write $(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')" ;;
+                Bash)   echo "  ▸ Run: $(echo "$CURRENT_INPUT" | jq -r '.command // empty' 2>/dev/null | head -c 60)" ;;
+                Grep)   echo "  ◦ Grep \"$(echo "$CURRENT_INPUT" | jq -r '.pattern // empty' 2>/dev/null | head -c 40)\"" ;;
+                Glob)   echo "  ◦ Glob $(echo "$CURRENT_INPUT" | jq -r '.pattern // empty' 2>/dev/null)" ;;
+                Agent)  echo "  ⧫ Agent: $(echo "$CURRENT_INPUT" | jq -r '.description // empty' 2>/dev/null)" ;;
+                *)      echo "  ◦ $CURRENT_TOOL" ;;
+              esac
+              CURRENT_TOOL=""
+              CURRENT_INPUT=""
+            fi
+            ;;
+        esac
+      done < "$PROGRESS_PIPE"
+    ) &
+    PARSER_PID=$!
 
-      EVENT_TYPE=$(echo "$line" | jq -r '.event.type // empty' 2>/dev/null)
+    # Run claude, tee output to both the parser pipe and capture text
+    claude --dangerously-skip-permissions --print --output-format stream-json < "$SCRIPT_DIR/CLAUDE.md" 2>&1 | tee "$PROGRESS_PIPE" > /dev/null || true
 
-      case "$EVENT_TYPE" in
-        content_block_start)
-          BLOCK_TYPE=$(echo "$line" | jq -r '.event.content_block.type // empty' 2>/dev/null)
-          if [[ "$BLOCK_TYPE" == "tool_use" ]]; then
-            TOOL_NAME=$(echo "$line" | jq -r '.event.content_block.name // empty' 2>/dev/null)
-            # Accumulate input JSON for this tool
-            CURRENT_TOOL="$TOOL_NAME"
-            CURRENT_INPUT=""
-          fi
-          ;;
-        content_block_delta)
-          DELTA_TYPE=$(echo "$line" | jq -r '.event.delta.type // empty' 2>/dev/null)
-          if [[ "$DELTA_TYPE" == "input_json_delta" && -n "$CURRENT_TOOL" ]]; then
-            CHUNK=$(echo "$line" | jq -r '.event.delta.partial_json // empty' 2>/dev/null)
-            CURRENT_INPUT="${CURRENT_INPUT}${CHUNK}"
-          elif [[ "$DELTA_TYPE" == "text_delta" ]]; then
-            TEXT=$(echo "$line" | jq -r '.event.delta.text // empty' 2>/dev/null)
-            echo -n "$TEXT" >> "$TEXT_OUTPUT_FILE"
-          fi
-          ;;
-        content_block_stop)
-          if [[ -n "$CURRENT_TOOL" ]]; then
-            # Extract a short description based on tool type
-            case "$CURRENT_TOOL" in
-              Read)
-                FILE=$(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')
-                echo "  ◦ Read $FILE" >&2
-                ;;
-              Edit)
-                FILE=$(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')
-                echo "  ◆ Edit $FILE" >&2
-                ;;
-              Write)
-                FILE=$(echo "$CURRENT_INPUT" | jq -r '.file_path // empty' 2>/dev/null | sed 's|.*/||')
-                echo "  ◆ Write $FILE" >&2
-                ;;
-              Bash)
-                CMD=$(echo "$CURRENT_INPUT" | jq -r '.command // empty' 2>/dev/null | head -c 60)
-                echo "  ▸ Run: $CMD" >&2
-                ;;
-              Grep)
-                PATTERN=$(echo "$CURRENT_INPUT" | jq -r '.pattern // empty' 2>/dev/null | head -c 40)
-                echo "  ◦ Grep \"$PATTERN\"" >&2
-                ;;
-              Glob)
-                PATTERN=$(echo "$CURRENT_INPUT" | jq -r '.pattern // empty' 2>/dev/null)
-                echo "  ◦ Glob $PATTERN" >&2
-                ;;
-              Agent)
-                DESC=$(echo "$CURRENT_INPUT" | jq -r '.description // empty' 2>/dev/null)
-                echo "  ⧫ Agent: $DESC" >&2
-                ;;
-              *)
-                echo "  ◦ $CURRENT_TOOL" >&2
-                ;;
-            esac
-            CURRENT_TOOL=""
-            CURRENT_INPUT=""
-          fi
-          ;;
-      esac
-    done || true
-
+    wait $PARSER_PID 2>/dev/null || true
     OUTPUT=$(cat "$TEXT_OUTPUT_FILE" 2>/dev/null)
-    rm -f "$STREAM_OUTPUT_FILE" "$TEXT_OUTPUT_FILE"
+    rm -f "$TEXT_OUTPUT_FILE" "$PROGRESS_PIPE"
   fi
 
   END_TIME=$(date +%s)
