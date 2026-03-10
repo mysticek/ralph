@@ -287,8 +287,27 @@ echo "Stories: $TOTAL_STORIES total, $(count_passing) already passing"
 echo "Judge: $JUDGE_ENABLED (retries: $MAX_RETRIES)"
 echo ""
 
-# Track retry counts per story
-declare -A RETRY_COUNT
+# Track retry counts per story (using temp file for bash 3 compatibility)
+RETRY_FILE=$(mktemp)
+trap "rm -f '$RETRY_FILE'" EXIT
+
+# Helper: get retry count for a story
+get_retry_count() {
+  local story_id="$1"
+  local count=$(grep "^${story_id}=" "$RETRY_FILE" 2>/dev/null | tail -1 | cut -d= -f2)
+  echo "${count:-0}"
+}
+
+# Helper: increment retry count for a story
+inc_retry_count() {
+  local story_id="$1"
+  local current=$(get_retry_count "$story_id")
+  local new_count=$((current + 1))
+  # Remove old entry and add new one
+  grep -v "^${story_id}=" "$RETRY_FILE" > "${RETRY_FILE}.tmp" 2>/dev/null || true
+  mv "${RETRY_FILE}.tmp" "$RETRY_FILE"
+  echo "${story_id}=${new_count}" >> "$RETRY_FILE"
+}
 
 for i in $(seq 1 $MAX_ITERATIONS); do
   PASSING_BEFORE=$(count_passing)
@@ -383,9 +402,9 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       } >> "$PROGRESS_FILE"
 
       # Track retries
-      RETRY_COUNT[$COMPLETED_STORY]=$(( ${RETRY_COUNT[$COMPLETED_STORY]:-0} + 1 ))
+      inc_retry_count "$COMPLETED_STORY"
 
-      if [ "${RETRY_COUNT[$COMPLETED_STORY]}" -ge "$MAX_RETRIES" ]; then
+      if [ "$(get_retry_count "$COMPLETED_STORY")" -ge "$MAX_RETRIES" ]; then
         echo ""
         echo "!! HARD STOP: Story $COMPLETED_STORY failed judge review $MAX_RETRIES times."
         echo "!! All previous passing stories are preserved."
@@ -400,7 +419,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         log_metric "$i" "$COMPLETED_STORY" "0" "$DURATION" "$PASSING_BEFORE" "$PASSING_AFTER" "FAIL_HARD_STOP"
         exit 1
       else
-        echo "  >> Will retry $COMPLETED_STORY (attempt ${RETRY_COUNT[$COMPLETED_STORY]}/$MAX_RETRIES)"
+        echo "  >> Will retry $COMPLETED_STORY (attempt $(get_retry_count "$COMPLETED_STORY")/$MAX_RETRIES)"
       fi
     fi
   elif [ "$STORIES_COMPLETED" -eq 0 ]; then
@@ -409,9 +428,9 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     ATTEMPTED_STORY=$(jq -r '[.userStories[] | select(.passes == false)] | sort_by(.priority) | .[0].id' "$PRD_FILE" 2>/dev/null)
 
     if [ -n "$ATTEMPTED_STORY" ]; then
-      RETRY_COUNT[$ATTEMPTED_STORY]=$(( ${RETRY_COUNT[$ATTEMPTED_STORY]:-0} + 1 ))
+      inc_retry_count "$ATTEMPTED_STORY"
 
-      if [ "${RETRY_COUNT[$ATTEMPTED_STORY]}" -ge "$MAX_RETRIES" ]; then
+      if [ "$(get_retry_count "$ATTEMPTED_STORY")" -ge "$MAX_RETRIES" ]; then
         echo ""
         echo "!! HARD STOP: Story $ATTEMPTED_STORY failed to complete $MAX_RETRIES times."
         echo "!! All previous passing stories are preserved."
