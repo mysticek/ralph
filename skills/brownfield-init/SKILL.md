@@ -1,6 +1,6 @@
 ---
 name: brownfield-init
-description: "Initialize Ralph for an existing (brownfield) codebase. Auto-detects tech stack, patterns, and conventions, then generates CLAUDE.md, AGENTS.md, progress.txt, and tasks/ directory through interactive interview. Use when setting up Ralph on a project that already has code. Triggers on: brownfield init, initialize ralph, setup ralph for existing project, bootstrap ralph, ralph init."
+description: "Initialize Ralph for an existing (brownfield) codebase. Auto-detects tech stack, patterns, and conventions, then generates CLAUDE.md, AGENTS.md, progress.txt, and tasks/ directory through interactive interview. Use when setting up Ralph on a project that already has code. Triggers on: brownfield init, setup ralph for existing project, bootstrap ralph."
 user-invocable: true
 ---
 
