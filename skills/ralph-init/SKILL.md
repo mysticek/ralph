@@ -123,7 +123,7 @@ Also copy:
 - `{ralph_repo}/prd.json.example` → `{target_dir}/prd.json.example`
 - `{ralph_repo}/judge-prompt.md` → `{target_dir}/judge-prompt.md`
 
-**IMPORTANT:** These are the Ralph operational files — the orchestrator script and its prompt templates. They go into the scripts directory, NOT the project root.
+**CRITICAL: All files in Step 1 MUST be verbatim copies from the ralph repo using `cp`. NEVER generate, rewrite, or modify their content. These are exact operational files that `ralph.sh` depends on (e.g., CLAUDE.md is fed directly to claude via stdin). If you generate or alter them, Ralph will break.**
 
 ### Step 2: Generate Project CLAUDE.md
 
