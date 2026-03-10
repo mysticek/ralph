@@ -477,7 +477,54 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     trim_progress
   fi
 
-  echo "Iteration $i complete. Stories passing: $(count_passing) / $TOTAL_STORIES"
+  # ─── Iteration Summary ────────────────────────────────────────────
+  CURRENT_PASSING=$(count_passing)
+  DURATION_MIN=$((DURATION / 60))
+  DURATION_SEC=$((DURATION % 60))
+
+  # Build progress bar
+  PROGRESS_BAR=""
+  for p in $(seq 1 $TOTAL_STORIES); do
+    if [ "$p" -le "$CURRENT_PASSING" ]; then
+      PROGRESS_BAR="${PROGRESS_BAR}█"
+    else
+      PROGRESS_BAR="${PROGRESS_BAR}░"
+    fi
+  done
+
+  echo ""
+  echo "┌─────────────────────────────────────────────────────────────────┐"
+  echo "│  ITERATION $i SUMMARY                                          "
+  echo "├─────────────────────────────────────────────────────────────────┤"
+
+  # What happened this iteration
+  if [ "$STORIES_COMPLETED" -eq 1 ]; then
+    STORY_TITLE=$(jq -r --arg id "$COMPLETED_STORY" '.userStories[] | select(.id == $id) | .title' "$PRD_FILE" 2>/dev/null)
+    if [[ "$JUDGE_VERDICT" == FAIL* ]]; then
+      echo "│  ✗ $COMPLETED_STORY — $STORY_TITLE"
+      echo "│    Judge rejected: ${JUDGE_VERDICT#FAIL:}"
+    else
+      echo "│  ✓ $COMPLETED_STORY — $STORY_TITLE"
+    fi
+  else
+    ATTEMPTED_TITLE=$(jq -r '[.userStories[] | select(.passes == false)] | sort_by(.priority) | .[0] | "\(.id) — \(.title)"' "$PRD_FILE" 2>/dev/null)
+    echo "│  ✗ No story completed (attempted: $ATTEMPTED_TITLE)"
+  fi
+
+  echo "│"
+  echo "│  Progress: [$PROGRESS_BAR] $CURRENT_PASSING / $TOTAL_STORIES"
+  echo "│  Duration: ${DURATION_MIN}m ${DURATION_SEC}s"
+
+  # Show remaining stories
+  REMAINING=$(jq -r '[.userStories[] | select(.passes == false)] | sort_by(.priority) | .[] | "│    · \(.id) — \(.title)"' "$PRD_FILE" 2>/dev/null)
+  if [ -n "$REMAINING" ]; then
+    echo "│"
+    echo "│  Remaining:"
+    echo "$REMAINING"
+  fi
+
+  echo "└─────────────────────────────────────────────────────────────────┘"
+  echo ""
   sleep 2
 done
 
